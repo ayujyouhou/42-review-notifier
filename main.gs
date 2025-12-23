@@ -21,8 +21,8 @@ const CONFIG = {
   // 検索するメールの件名キーワード
   EMAIL_SUBJECT_FILTER: '予約確認',
   
-  // 何分前に通知するか
-  REMINDER_MINUTES_BEFORE: 5,
+  // 何分前に通知するか（10分前）
+  REMINDER_MINUTES_BEFORE: 10,
   
   // 検索する過去のメール（時間）
   SEARCH_HOURS: 24,
@@ -53,10 +53,10 @@ function checkEmails() {
     // 日時を抽出
     const extractedDateTime = extractDateTime(body);
     
-    // 新着メール通知
+    // 新着メール通知（確定時・メンション付き）
     sendNewEmailNotification(subject, sender, body, extractedDateTime);
     
-    // 5分前リマインダーをスケジュール
+    // 10分前リマインダーをスケジュール
     if (extractedDateTime) {
       scheduleReminder(messageId, subject, extractedDateTime);
     }
@@ -192,7 +192,7 @@ function sendNewEmailNotification(subject, sender, body, extractedDateTime) {
   if (extractedDateTime) {
     const dateStr = Utilities.formatDate(extractedDateTime, 'Asia/Tokyo', 'yyyy年MM月dd日 HH:mm');
     embed.fields.push({ name: '📅 抽出された予定', value: dateStr, inline: false });
-    embed.fields.push({ name: '⏰ リマインダー', value: `${CONFIG.REMINDER_MINUTES_BEFORE}分前に通知します`, inline: false });
+    embed.fields.push({ name: '⏰ リマインダー', value: `${CONFIG.REMINDER_MINUTES_BEFORE}分前にメンション通知します`, inline: false });
   }
   
   if (bodyPreview) {
@@ -215,7 +215,7 @@ function sendReminderNotification(subject, eventTime) {
   const dateStr = Utilities.formatDate(eventTime, 'Asia/Tokyo', 'yyyy年MM月dd日 HH:mm');
   
   const embed = {
-    title: '⏰ 予定の5分前です！',
+    title: '⏰ 予定の10分前です！',
     color: 0xe74c3c, // 赤
     fields: [
       { name: '件名', value: subject, inline: false },
