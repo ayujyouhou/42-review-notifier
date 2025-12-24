@@ -1,1 +1,5 @@
+# OS
 .DS_Store
+
+# Config (個人設定)
+config.js

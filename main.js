@@ -1,32 +1,15 @@
 /**
- * Gmail → Discord 予定通知 Bot (Google Apps Script)
+ * 42 Review Notifier - Gmail → Discord 通知 Bot
  * 
  * セットアップ:
  * 1. https://script.google.com で新規プロジェクト作成
- * 2. このコードを貼り付け
- * 3. DISCORD_WEBHOOK_URL を設定
- * 4. EMAIL_SUBJECT_FILTER を設定
- * 5. DISCORD_USER_ID を設定（メンション用）
- * 6. トリガーを設定（5分おき）
+ * 2. config.example.js をコピーして config.js を作成し、設定を記入
+ * 3. GASエディタで「ファイル」→「新規作成」→「スクリプト」で config.js を追加
+ * 4. main.js と config.js の両方を貼り付け
+ * 5. トリガーを設定（5分おき）
+ * 
+ * 注意: CONFIG は config.js で定義されています
  */
-
-// ===== 設定 =====
-const CONFIG = {
-  // Discord Webhook URL（チャンネル設定 → 連携サービス → ウェブフック）
-  DISCORD_WEBHOOK_URL: 'YOUR_DISCORD_WEBHOOK_URL',
-  
-  // メンションするユーザーID（開発者モードでIDコピー）
-  DISCORD_USER_ID: 'YOUR_USER_ID',
-  
-  // 検索するメールの件名キーワード
-  EMAIL_SUBJECT_FILTER: '予約確認',
-  
-  // 何分前に通知するか（10分前）
-  REMINDER_MINUTES_BEFORE: 10,
-  
-  // 検索する過去のメール（時間）
-  SEARCH_HOURS: 24,
-};
 
 // ===== メイン関数 =====
 
@@ -126,7 +109,35 @@ function searchEmails() {
 function extractDateTime(body) {
   if (!body) return null;
   
-  const patterns = [
+  // 42形式: "from December 07, 2025 11:45"
+  const monthNames = {
+    'january': 0, 'february': 1, 'march': 2, 'april': 3,
+    'may': 4, 'june': 5, 'july': 6, 'august': 7,
+    'september': 8, 'october': 9, 'november': 10, 'december': 11
+  };
+  
+  const datePattern = /from\s+([a-z]+)\s+(\d{1,2}),\s+(\d{4})\s+(\d{1,2}):(\d{2})/i;
+  const match = body.match(datePattern);
+  
+  if (match) {
+    try {
+      const monthName = match[1].toLowerCase();
+      const month = monthNames[monthName];
+      const day = parseInt(match[2]);
+      const year = parseInt(match[3]);
+      const hour = parseInt(match[4]);
+      const minute = parseInt(match[5]);
+      
+      if (month !== undefined) {
+        return new Date(year, month, day, hour, minute);
+      }
+    } catch (e) {
+      console.log('日時パースエラー:', e);
+    }
+  }
+  
+  // 日本語形式のパターン（後方互換性のため残す）
+  const jpPatterns = [
     // 2024年12月7日 14:30
     /(\d{4})年(\d{1,2})月(\d{1,2})日\s*(\d{1,2}):(\d{2})/,
     // 2024/12/07 14:30
@@ -136,26 +147,24 @@ function extractDateTime(body) {
     /(\d{1,2})月(\d{1,2})日\s+(\d{1,2}):(\d{2})/,
   ];
   
-  for (let i = 0; i < patterns.length; i++) {
-    const match = body.match(patterns[i]);
-    if (match) {
+  for (let i = 0; i < jpPatterns.length; i++) {
+    const jpMatch = body.match(jpPatterns[i]);
+    if (jpMatch) {
       try {
         let year, month, day, hour, minute;
         
         if (i <= 1) {
-          // 年を含むパターン
-          year = parseInt(match[1]);
-          month = parseInt(match[2]) - 1;
-          day = parseInt(match[3]);
-          hour = parseInt(match[4]);
-          minute = parseInt(match[5]);
+          year = parseInt(jpMatch[1]);
+          month = parseInt(jpMatch[2]) - 1;
+          day = parseInt(jpMatch[3]);
+          hour = parseInt(jpMatch[4]);
+          minute = parseInt(jpMatch[5]);
         } else {
-          // 年を含まないパターン（今年と仮定）
           year = new Date().getFullYear();
-          month = parseInt(match[1]) - 1;
-          day = parseInt(match[2]);
-          hour = parseInt(match[3]);
-          minute = parseInt(match[4]);
+          month = parseInt(jpMatch[1]) - 1;
+          day = parseInt(jpMatch[2]);
+          hour = parseInt(jpMatch[3]);
+          minute = parseInt(jpMatch[4]);
         }
         
         return new Date(year, month, day, hour, minute);
@@ -177,26 +186,28 @@ function extractDateTime(body) {
 function sendNewEmailNotification(subject, sender, body, extractedDateTime) {
   const mention = `<@${CONFIG.DISCORD_USER_ID}>`;
   
-  const bodyPreview = body.length > 300 ? body.substring(0, 300) + '...' : body;
+  // 時間を抽出（30 minutes など）
+  const durationMatch = body.match(/for\s+(\d+)\s+minutes/i);
+  const duration = durationMatch ? durationMatch[1] + '分' : null;
   
   const embed = {
-    title: '📧 新着メールを検知しました',
-    color: 0x3498db, // 青
-    fields: [
-      { name: '件名', value: subject || '(件名なし)', inline: false },
-      { name: '送信者', value: sender || '(不明)', inline: false },
-    ],
+    title: '🔔 42 Evaluation 予約確定',
+    color: 0x00babc, // 42カラー
+    fields: [],
     timestamp: new Date().toISOString(),
   };
   
   if (extractedDateTime) {
     const dateStr = Utilities.formatDate(extractedDateTime, 'Asia/Tokyo', 'yyyy年MM月dd日 HH:mm');
-    embed.fields.push({ name: '📅 抽出された予定', value: dateStr, inline: false });
-    embed.fields.push({ name: '⏰ リマインダー', value: `${CONFIG.REMINDER_MINUTES_BEFORE}分前にメンション通知します`, inline: false });
+    embed.fields.push({ name: '📅 予定時刻', value: dateStr, inline: false });
   }
   
-  if (bodyPreview) {
-    embed.fields.push({ name: '本文プレビュー', value: bodyPreview, inline: false });
+  if (duration) {
+    embed.fields.push({ name: '⏱️ 所要時間', value: duration, inline: true });
+  }
+  
+  if (extractedDateTime) {
+    embed.fields.push({ name: '⏰ リマインダー', value: `${CONFIG.REMINDER_MINUTES_BEFORE}分前にメンション通知します`, inline: false });
   }
   
   const payload = {
